@@ -598,8 +598,154 @@ function TemperatureMonitor({ temperatures, onRefresh, onAddEquipment, onRecordR
 function AIHACCPGenerator({ onGenerate }: any) {
   const [step, setStep] = useState(0);
   const [businessType, setBusinessType] = useState("");
+  const [foodCategories, setFoodCategories] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [generatedPlan, setGeneratedPlan] = useState<any>(null);
 
-  const steps = ["Business Type", "Food Categories", "Review CCPs", "Generate Plan"];
+  const steps = ["Business Type", "Food Categories", "Review", "Generate"];
+
+  const FOOD_CATEGORY_OPTIONS = [
+    "Raw meat / poultry",
+    "Raw fish / seafood",
+    "Dairy products",
+    "Eggs",
+    "Cooked / hot food",
+    "Cold prepared food",
+    "Bakery / pastry",
+    "Beverages (incl. alcohol)",
+    "Frozen foods",
+    "Allergen-controlled menu",
+  ];
+
+  const toggleCategory = (cat: string) => {
+    setFoodCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await callAI({
+        mode: "haccp",
+        businessType,
+        foodCategories,
+      });
+      setGeneratedPlan(result);
+      if (onGenerate) onGenerate(result);
+    } catch (e: any) {
+      setError(e?.message || "Failed to generate plan");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setStep(0);
+    setBusinessType("");
+    setFoodCategories([]);
+    setGeneratedPlan(null);
+    setError(null);
+  };
+
+  // Show generated plan view
+  if (generatedPlan) {
+    return (
+      <Box>
+        <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" }, gap: 2, mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Generated HACCP Plan
+          </Typography>
+          <Button variant="outlined" startIcon={<RefreshCw size={16} />} onClick={reset}>
+            Generate New Plan
+          </Button>
+        </Box>
+        <Paper sx={{ p: { xs: 2, sm: 3 }, boxShadow: "none", border: "1px solid", borderColor: "divider" }}>
+          {generatedPlan.raw ? (
+            <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.8rem" }}>
+              {generatedPlan.raw}
+            </Typography>
+          ) : (
+            <Stack spacing={3}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                  {generatedPlan.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {generatedPlan.summary}
+                </Typography>
+              </Box>
+
+              {generatedPlan.criticalControlPoints?.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                    Critical Control Points
+                  </Typography>
+                  <Stack spacing={2}>
+                    {generatedPlan.criticalControlPoints.map((ccp: any, idx: number) => (
+                      <Card key={idx} sx={{ boxShadow: "none", border: "1px solid", borderColor: "divider" }}>
+                        <CardContent sx={{ p: 2 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: "primary.main" }}>
+                            CCP {idx + 1}: {ccp.name}
+                          </Typography>
+                          <Stack spacing={1}>
+                            {[
+                              ["Hazard", ccp.hazard],
+                              ["Critical Limit", ccp.criticalLimit],
+                              ["Monitoring", ccp.monitoring],
+                              ["Corrective Action", ccp.correctiveAction],
+                              ["Verification", ccp.verification],
+                              ["Records", ccp.records],
+                            ].map(([label, val]) =>
+                              val ? (
+                                <Box key={label}>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", display: "block" }}>
+                                    {label}
+                                  </Typography>
+                                  <Typography variant="body2">{val}</Typography>
+                                </Box>
+                              ) : null
+                            )}
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+
+              {generatedPlan.prerequisites?.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                    Prerequisite Programmes
+                  </Typography>
+                  <Stack spacing={1}>
+                    {generatedPlan.prerequisites.map((p: string, idx: number) => (
+                      <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <CheckCircle size={16} color="#10b981" />
+                        <Typography variant="body2">{p}</Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+
+              {generatedPlan.reviewFrequency && (
+                <Paper sx={{ p: 2, bgcolor: alpha("#6366f1", 0.04), boxShadow: "none", border: "1px solid", borderColor: alpha("#6366f1", 0.15) }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#6366f1", display: "block", mb: 0.5 }}>
+                    Review Frequency
+                  </Typography>
+                  <Typography variant="body2">{generatedPlan.reviewFrequency}</Typography>
+                </Paper>
+              )}
+            </Stack>
+          )}
+        </Paper>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -613,10 +759,10 @@ function AIHACCPGenerator({ onGenerate }: any) {
           </Avatar>
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              Generate Your HACCP Plan in 15 Minutes
+              Generate Your HACCP Plan in 15 Seconds
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              AI-powered compliance builder - FSA approved templates
+              AI-powered compliance builder — FSA-aligned templates
             </Typography>
           </Box>
         </Box>
@@ -642,26 +788,109 @@ function AIHACCPGenerator({ onGenerate }: any) {
           <FormControl fullWidth>
             <InputLabel>Select Business Type</InputLabel>
             <Select value={businessType} onChange={(e) => setBusinessType(e.target.value)} label="Select Business Type">
-              <MenuItem key="restaurant" value="restaurant">Restaurant / Café</MenuItem>
-              <MenuItem key="takeaway" value="takeaway">Takeaway / Fast Food</MenuItem>
-              <MenuItem key="pub" value="pub">Pub / Bar</MenuItem>
-              <MenuItem key="catering" value="catering">Catering Service</MenuItem>
-              <MenuItem key="bakery" value="bakery">Bakery / Patisserie</MenuItem>
+              <MenuItem key="restaurant" value="Restaurant / Café">Restaurant / Café</MenuItem>
+              <MenuItem key="takeaway" value="Takeaway / Fast Food">Takeaway / Fast Food</MenuItem>
+              <MenuItem key="pub" value="Pub / Bar">Pub / Bar</MenuItem>
+              <MenuItem key="catering" value="Catering Service">Catering Service</MenuItem>
+              <MenuItem key="bakery" value="Bakery / Patisserie">Bakery / Patisserie</MenuItem>
+              <MenuItem key="dark-kitchen" value="Dark Kitchen / Delivery-only">Dark Kitchen / Delivery-only</MenuItem>
             </Select>
           </FormControl>
         )}
 
+        {step === 1 && (
+          <Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Select all that apply (you can pick multiple)
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {FOOD_CATEGORY_OPTIONS.map((cat) => (
+                <Chip
+                  key={cat}
+                  label={cat}
+                  onClick={() => toggleCategory(cat)}
+                  color={foodCategories.includes(cat) ? "primary" : "default"}
+                  variant={foodCategories.includes(cat) ? "filled" : "outlined"}
+                  sx={{ cursor: "pointer" }}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {step === 2 && (
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+              Review your inputs
+            </Typography>
+            <Paper sx={{ p: 2, bgcolor: alpha("#6366f1", 0.04), boxShadow: "none", border: "1px solid", borderColor: alpha("#6366f1", 0.15) }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, display: "block" }}>Business Type</Typography>
+              <Typography variant="body2" sx={{ mb: 1.5 }}>{businessType || "—"}</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 600, display: "block" }}>Food Categories</Typography>
+              <Typography variant="body2">{foodCategories.length ? foodCategories.join(", ") : "None selected"}</Typography>
+            </Paper>
+          </Box>
+        )}
+
+        {step === 3 && !loading && !error && (
+          <Box sx={{ textAlign: "center", py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Click "Generate" below to create your HACCP plan with AI.
+            </Typography>
+          </Box>
+        )}
+
+        {loading && (
+          <Box sx={{ textAlign: "center", py: 4 }}>
+            <LinearProgress sx={{ mb: 2 }} />
+            <Typography variant="body2" color="text.secondary">
+              Generating your HACCP plan... this usually takes 5-15 seconds.
+            </Typography>
+          </Box>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+
         <Box sx={{ display: "flex", gap: 1, mt: 3 }}>
-          <Button disabled={step === 0} onClick={() => setStep(step - 1)}>
+          <Button disabled={step === 0 || loading} onClick={() => setStep(step - 1)}>
             Back
           </Button>
-          <Button variant="contained" onClick={() => step === 3 ? onGenerate() : setStep(step + 1)}>
-            {step === 3 ? "Generate HACCP Plan" : "Next"}
+          <Button
+            variant="contained"
+            disabled={loading || (step === 0 && !businessType)}
+            onClick={() => {
+              if (step === 3) {
+                handleGenerate();
+              } else {
+                setStep(step + 1);
+              }
+            }}
+          >
+            {step === 3 ? (loading ? "Generating..." : "Generate HACCP Plan") : "Next"}
           </Button>
         </Box>
       </Paper>
     </Box>
   );
+}
+
+// Helper to call our serverless /api/ai endpoint. Throws on error so callers
+// can handle it. Returns the parsed `result` field.
+async function callAI(payload: any): Promise<any> {
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || `AI request failed (${res.status})`);
+  }
+  return data.result;
 }
 
 // Empty State Component
@@ -893,6 +1122,18 @@ export default function App() {
   const [userRole, setUserRole] = useState<"owner" | "staff">("owner");
   const isOwner = userRole === "owner";
 
+  // AI Improvement Plan state
+  const [improvementOpen, setImprovementOpen] = useState(false);
+  const [improvementLoading, setImprovementLoading] = useState(false);
+  const [improvementError, setImprovementError] = useState<string | null>(null);
+  const [improvementPlan, setImprovementPlan] = useState<any>(null);
+
+  // Ask AI chat state
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "model"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+
   const handleLogin = (role: "owner" | "staff") => {
     setUserRole(role);
     setUser(role === "owner" ? "Sarah Mitchell" : "James Hargreaves");
@@ -951,8 +1192,26 @@ export default function App() {
     setShowOnboarding(false);
   };
 
-  const handleGenerateHACCP = () => {
-    alert("AI is generating your HACCP plan based on FSA guidelines...");
+  const handleGenerateHACCP = (plan: any) => {
+    // Optionally save into the data state (could be persisted to backend later)
+    if (plan && plan.title && plan.criticalControlPoints) {
+      setData((prev: any) => ({
+        ...prev,
+        haccp: [
+          ...(prev.haccp || []),
+          {
+            id: Date.now(),
+            title: plan.title,
+            ccps: plan.criticalControlPoints.length,
+            createdBy: "AI Generated",
+            category: plan.criticalControlPoints[0]?.name?.split(" ")[0] || "General",
+            status: "active",
+            lastReview: new Date().toISOString().slice(0, 10),
+            nextReview: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          },
+        ],
+      }));
+    }
   };
 
   const handleFHRSSubmission = () => {
@@ -961,6 +1220,65 @@ export default function App() {
 
   const handleExportReport = () => {
     alert("Exporting comprehensive compliance report (PDF/Excel)...");
+  };
+
+  // Generate AI improvement plan based on the user's current data
+  const handleGenerateImprovement = async () => {
+    setImprovementOpen(true);
+    setImprovementLoading(true);
+    setImprovementError(null);
+    setImprovementPlan(null);
+    try {
+      // Build a compact summary to send to the AI (don't dump the whole data object)
+      const summary = {
+        complianceScore,
+        licences: (data.licences || []).map((x: any) => ({ title: x.title, status: x.status, expiry: x.expiry })),
+        certifications: (data.certifications || []).map((x: any) => ({ title: x.title, status: x.status, nextDue: x.nextDue })),
+        insurance: (data.insurance || []).map((x: any) => ({ title: x.title, status: x.status, renewal: x.renewal })),
+        environmental: (data.environmental || []).map((x: any) => ({ title: x.title, status: x.status })),
+        operational: (data.operational || []).map((x: any) => ({ title: x.title, status: x.status })),
+        training: (data.training || []).map((x: any) => ({ name: x.name, role: x.role, status: x.status })),
+        temperatures: (data.temperatures || []).map((t: any) => ({ name: t.name, status: t.status })),
+        haccpPlanCount: (data.haccp || []).length,
+        allergenItemCount: (data.allergens?.menu || []).length,
+      };
+      const result = await callAI({ mode: "improvement", complianceData: summary });
+      setImprovementPlan(result);
+    } catch (e: any) {
+      setImprovementError(e?.message || "Failed to generate improvement plan");
+    } finally {
+      setImprovementLoading(false);
+    }
+  };
+
+  // Send a chat message
+  const handleSendChat = async () => {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+    const newMessages: { role: "user" | "model"; content: string }[] = [
+      ...chatMessages,
+      { role: "user", content: text },
+    ];
+    setChatMessages(newMessages);
+    setChatInput("");
+    setChatLoading(true);
+    setChatError(null);
+    try {
+      const context = {
+        role: userRole,
+        complianceScore,
+        upcomingExpiries: [...(data.licences || []), ...(data.certifications || [])]
+          .filter((x: any) => x.expiry || x.nextDue)
+          .slice(0, 10)
+          .map((x: any) => ({ title: x.title, due: x.expiry || x.nextDue })),
+      };
+      const reply = await callAI({ mode: "chat", messages: newMessages, context });
+      setChatMessages([...newMessages, { role: "model", content: reply }]);
+    } catch (e: any) {
+      setChatError(e?.message || "Chat failed");
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   // Login screen - shown when user is not logged in
@@ -1200,7 +1518,7 @@ export default function App() {
                   size="medium"
                   startIcon={<Target size={18} />}
                   sx={{ borderRadius: 2, boxShadow: 1, whiteSpace: "nowrap" }}
-                  onClick={() => alert('Generate improvement plan functionality - coming soon')}
+                  onClick={handleGenerateImprovement}
                 >
                   <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Improvement Plan</Box>
                   <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Improve</Box>
@@ -3162,62 +3480,288 @@ export default function App() {
       </Container>
 
       {/* AI Assistant Drawer */}
-      <Drawer anchor="right" open={showAI} onClose={() => setShowAI(false)}>
-        <Box sx={{ width: 400, p: 3 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Avatar sx={{ bgcolor: "primary.main" }}>
-                <Bot size={20} />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
-                  AI Compliance Assistant
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Powered by GPT-4
-                </Typography>
-              </Box>
-            </Box>
-            <IconButton onClick={() => setShowAI(false)} size="small">
-              <X size={20} />
-            </IconButton>
-          </Box>
-
-          <Stack spacing={3}>
-            <Paper sx={{ p: 2, boxShadow: "none", border: "1px solid", borderColor: "divider", bgcolor: alpha("#6366f1", 0.02) }}>
-              <Typography variant="body2">
-                Hi! I can help you with:
+      <Drawer
+        anchor="right"
+        open={showAI}
+        onClose={() => setShowAI(false)}
+        PaperProps={{ sx: { width: { xs: "100%", sm: 420 }, display: "flex", flexDirection: "column" } }}
+      >
+        {/* Header */}
+        <Box sx={{ p: 2, borderBottom: "1px solid", borderColor: "divider", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: "primary.main", width: 36, height: 36 }}>
+              <Bot size={18} color="white" />
+            </Avatar>
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: "1rem" }}>
+                AI Compliance Assistant
               </Typography>
-              <List dense>
-                <ListItem key="ai-help-1">• Generate HACCP plans instantly</ListItem>
-                <ListItem key="ai-help-2">• Answer UK compliance questions</ListItem>
-                <ListItem key="ai-help-3">• Predict inspection outcomes</ListItem>
-                <ListItem key="ai-help-4">• Suggest improvements</ListItem>
-                <ListItem key="ai-help-5">• Create training schedules</ListItem>
-              </List>
+              <Typography variant="caption" color="text.secondary">
+                Powered by Gemini
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton onClick={() => setShowAI(false)} size="small">
+            <X size={20} />
+          </IconButton>
+        </Box>
+
+        {/* Messages */}
+        <Box sx={{ flex: 1, overflowY: "auto", p: 2, display: "flex", flexDirection: "column", gap: 1.5 }}>
+          {chatMessages.length === 0 && (
+            <Paper sx={{ p: 2, boxShadow: "none", border: "1px solid", borderColor: "divider", bgcolor: alpha("#6366f1", 0.02) }}>
+              <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 500 }}>
+                Hi! Ask me anything about UK food compliance:
+              </Typography>
+              <Stack spacing={0.75}>
+                {[
+                  "What temperature should chicken be cooked to?",
+                  "Explain Natasha's Law in 2 sentences",
+                  "Which of my items are expiring soon?",
+                  "What's needed for a 5-star FHRS rating?",
+                ].map((q) => (
+                  <Box
+                    key={q}
+                    onClick={() => setChatInput(q)}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1,
+                      cursor: "pointer",
+                      bgcolor: "white",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      "&:hover": { bgcolor: alpha("#6366f1", 0.04), borderColor: alpha("#6366f1", 0.3) },
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontSize: "0.85rem", color: "#6366f1" }}>
+                      {q}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
             </Paper>
+          )}
 
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Ask me anything..."
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton size="small">
-                      <Send size={16} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
+          {chatMessages.map((m, idx) => (
+            <Box
+              key={idx}
+              sx={{
+                alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                maxWidth: "85%",
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: m.role === "user" ? "primary.main" : "#f3f4f6",
+                color: m.role === "user" ? "white" : "text.primary",
               }}
-            />
+            >
+              <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: "0.875rem", lineHeight: 1.5 }}>
+                {m.content}
+              </Typography>
+            </Box>
+          ))}
 
-            <Typography variant="caption" color="text.secondary" sx={{ textAlign: "center" }}>
-              Try: "Generate a HACCP plan for seafood storage"
-            </Typography>
-          </Stack>
+          {chatLoading && (
+            <Box sx={{ alignSelf: "flex-start", maxWidth: "85%", p: 1.5, borderRadius: 2, bgcolor: "#f3f4f6" }}>
+              <Typography variant="body2" sx={{ fontSize: "0.875rem", color: "text.secondary", fontStyle: "italic" }}>
+                Thinking...
+              </Typography>
+            </Box>
+          )}
+
+          {chatError && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {chatError}
+            </Alert>
+          )}
+        </Box>
+
+        {/* Input */}
+        <Box sx={{ p: 2, borderTop: "1px solid", borderColor: "divider", flexShrink: 0 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Ask anything..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendChat();
+              }
+            }}
+            disabled={chatLoading}
+            multiline
+            maxRows={3}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={handleSendChat}
+                    disabled={chatLoading || !chatInput.trim()}
+                    color="primary"
+                  >
+                    <Send size={18} />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+          {chatMessages.length > 0 && (
+            <Button
+              size="small"
+              onClick={() => {
+                setChatMessages([]);
+                setChatError(null);
+              }}
+              sx={{ mt: 1, fontSize: "0.75rem" }}
+            >
+              Clear conversation
+            </Button>
+          )}
         </Box>
       </Drawer>
+
+      {/* AI Improvement Plan Dialog */}
+      <Dialog
+        open={improvementOpen}
+        onClose={() => setImprovementOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        fullScreen={typeof window !== "undefined" && window.innerWidth < 600}
+      >
+        <DialogTitle sx={{ pr: 5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: "primary.main", width: 36, height: 36 }}>
+              <Target size={18} color="white" />
+            </Avatar>
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: "1.1rem" }}>
+                AI Improvement Plan
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Personalised recommendations
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton
+            onClick={() => setImprovementOpen(false)}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+          >
+            <X size={20} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {improvementLoading && (
+            <Box sx={{ py: 4, textAlign: "center" }}>
+              <LinearProgress sx={{ mb: 2 }} />
+              <Typography variant="body2" color="text.secondary">
+                Analysing your compliance data...
+              </Typography>
+            </Box>
+          )}
+          {improvementError && (
+            <Alert severity="error">{improvementError}</Alert>
+          )}
+          {improvementPlan && !improvementLoading && (
+            <Stack spacing={2.5}>
+              {improvementPlan.summary && (
+                <Paper sx={{ p: 2, bgcolor: alpha("#6366f1", 0.04), boxShadow: "none", border: "1px solid", borderColor: alpha("#6366f1", 0.15) }}>
+                  <Typography variant="body2">{improvementPlan.summary}</Typography>
+                  {improvementPlan.currentScore && improvementPlan.targetScore && (
+                    <Box sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        {improvementPlan.currentScore}%
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={(improvementPlan.currentScore / improvementPlan.targetScore) * 100}
+                        sx={{ flex: 1, height: 6, borderRadius: 3 }}
+                      />
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "#10b981" }}>
+                        Target: {improvementPlan.targetScore}%
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              )}
+
+              {improvementPlan.actions?.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                    Recommended Actions
+                  </Typography>
+                  <Stack spacing={1.5}>
+                    {improvementPlan.actions.map((a: any, idx: number) => {
+                      const colour = a.priority === "high" ? "#ef4444" : a.priority === "medium" ? "#f59e0b" : "#6366f1";
+                      return (
+                        <Card key={idx} sx={{ boxShadow: "none", border: "1px solid", borderColor: "divider" }}>
+                          <CardContent sx={{ p: 2 }}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 1, mb: 1 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }}>
+                                {a.title}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={a.priority}
+                                sx={{ bgcolor: alpha(colour, 0.1), color: colour, fontWeight: 700, textTransform: "uppercase", fontSize: "0.65rem" }}
+                              />
+                            </Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              {a.description}
+                            </Typography>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                              {a.category && <Chip size="small" label={a.category} variant="outlined" />}
+                              {a.deadline && <Chip size="small" label={a.deadline} variant="outlined" />}
+                              {a.estimatedImpact && (
+                                <Chip
+                                  size="small"
+                                  label={a.estimatedImpact}
+                                  sx={{ bgcolor: alpha("#10b981", 0.1), color: "#10b981", fontWeight: 600 }}
+                                />
+                              )}
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              )}
+
+              {improvementPlan.quickWins?.length > 0 && (
+                <Paper sx={{ p: 2, boxShadow: "none", border: "1px solid", borderColor: alpha("#10b981", 0.2), bgcolor: alpha("#10b981", 0.03) }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: "#10b981" }}>
+                    Quick Wins
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {improvementPlan.quickWins.map((q: string, idx: number) => (
+                      <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <CheckCircle size={14} color="#10b981" />
+                        <Typography variant="body2">{q}</Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Paper>
+              )}
+
+              {improvementPlan.raw && (
+                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.8rem" }}>
+                  {improvementPlan.raw}
+                </Typography>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImprovementOpen(false)}>Close</Button>
+          {improvementPlan && !improvementLoading && (
+            <Button variant="outlined" startIcon={<RefreshCw size={16} />} onClick={handleGenerateImprovement}>
+              Regenerate
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       {/* Onboarding Wizard */}
       {showOnboarding && <OnboardingWizard onComplete={handleOnboardingComplete} onClose={() => setShowOnboarding(false)} />}
