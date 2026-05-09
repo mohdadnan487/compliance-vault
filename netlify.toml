@@ -1,0 +1,13 @@
+[build]
+  command = "pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--version"
+
+# SPA fallback so React Router works on direct URL hits / refresh
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
